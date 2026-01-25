@@ -1,0 +1,311 @@
+#!/bin/bash
+
+# pos-cron: Manage launchd scheduled tasks for pos
+
+PLIST_DIR="$HOME/Library/LaunchAgents"
+LABEL_PREFIX="com.pos.cron"
+LOG_DIR="$HOME/personal-os-data/pos-cron-logs"
+POS_PATH="$(dirname "$(realpath "$0")")/pos"
+
+# Ensure directories exist
+mkdir -p "$PLIST_DIR"
+mkdir -p "$LOG_DIR"
+
+usage() {
+    cat <<EOF
+pos-cron: Manage scheduled pos tasks via launchd
+
+Usage:
+  pos-cron add <name> <schedule> <prompt>  Create a new scheduled task
+  pos-cron list                            List all pos scheduled tasks
+  pos-cron rm <name>                       Remove a scheduled task
+  pos-cron logs <name>                     Tail logs for a task
+  pos-cron run <name>                      Manually trigger a task
+
+Schedule formats:
+  daily@HH:MM          Every day at specified time (e.g., daily@09:00)
+  hourly               Every hour
+  weekly@DAY@HH:MM     Weekly on day at time (e.g., weekly@mon@14:30)
+                       Days: mon, tue, wed, thu, fri, sat, sun
+
+Examples:
+  pos-cron add morning-summary daily@09:00 "summarize my calendar for today"
+  pos-cron add hourly-check hourly "check for new emails"
+  pos-cron add weekly-review weekly@fri@17:00 "generate weekly summary"
+EOF
+    exit 1
+}
+
+# Parse schedule and return StartCalendarInterval XML
+parse_schedule() {
+    local schedule="$1"
+
+    if [[ "$schedule" == "hourly" ]]; then
+        echo "    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>"
+    elif [[ "$schedule" =~ ^daily@([0-9]{2}):([0-9]{2})$ ]]; then
+        local hour="${BASH_REMATCH[1]#0}"  # Remove leading zero
+        local minute="${BASH_REMATCH[2]#0}"
+        [[ -z "$hour" ]] && hour="0"
+        [[ -z "$minute" ]] && minute="0"
+        echo "    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>$hour</integer>
+        <key>Minute</key>
+        <integer>$minute</integer>
+    </dict>"
+    elif [[ "$schedule" =~ ^weekly@([a-z]{3})@([0-9]{2}):([0-9]{2})$ ]]; then
+        local day="${BASH_REMATCH[1]}"
+        local hour="${BASH_REMATCH[2]#0}"
+        local minute="${BASH_REMATCH[3]#0}"
+        [[ -z "$hour" ]] && hour="0"
+        [[ -z "$minute" ]] && minute="0"
+
+        # Convert day to weekday number (0=Sunday, 1=Monday, etc.)
+        local weekday
+        case "$day" in
+            sun) weekday=0 ;;
+            mon) weekday=1 ;;
+            tue) weekday=2 ;;
+            wed) weekday=3 ;;
+            thu) weekday=4 ;;
+            fri) weekday=5 ;;
+            sat) weekday=6 ;;
+            *) echo "Invalid day: $day" >&2; return 1 ;;
+        esac
+
+        echo "    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>$weekday</integer>
+        <key>Hour</key>
+        <integer>$hour</integer>
+        <key>Minute</key>
+        <integer>$minute</integer>
+    </dict>"
+    else
+        echo "Invalid schedule format: $schedule" >&2
+        echo "Use: daily@HH:MM, hourly, or weekly@DAY@HH:MM" >&2
+        return 1
+    fi
+}
+
+cmd_add() {
+    local name="$1"
+    local schedule="$2"
+    local prompt="$3"
+
+    if [[ -z "$name" || -z "$schedule" || -z "$prompt" ]]; then
+        echo "Error: Missing required arguments"
+        echo "Usage: pos-cron add <name> <schedule> <prompt>"
+        exit 1
+    fi
+
+    # Validate name (alphanumeric and hyphens only)
+    if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "Error: Name must contain only alphanumeric characters, hyphens, and underscores"
+        exit 1
+    fi
+
+    local label="${LABEL_PREFIX}.${name}"
+    local plist_path="${PLIST_DIR}/${label}.plist"
+    local log_path="${LOG_DIR}/${name}.log"
+
+    # Check if already exists
+    if [[ -f "$plist_path" ]]; then
+        echo "Error: Task '$name' already exists. Remove it first with: pos-cron rm $name"
+        exit 1
+    fi
+
+    # Parse schedule
+    local calendar_interval
+    calendar_interval=$(parse_schedule "$schedule")
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
+
+    # Create plist
+    cat > "$plist_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$label</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$POS_PATH</string>
+        <string>-p</string>
+        <string>$prompt</string>
+    </array>
+$calendar_interval
+    <key>StandardOutPath</key>
+    <string>$log_path</string>
+    <key>StandardErrorPath</key>
+    <string>$log_path</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+EOF
+
+    # Load the job
+    launchctl load "$plist_path" 2>/dev/null
+
+    echo "Created scheduled task: $name"
+    echo "  Schedule: $schedule"
+    echo "  Prompt: $prompt"
+    echo "  Logs: $log_path"
+}
+
+cmd_list() {
+    echo "pos scheduled tasks:"
+    echo ""
+
+    local found=0
+    for plist in "$PLIST_DIR"/${LABEL_PREFIX}.*.plist; do
+        [[ -f "$plist" ]] || continue
+        found=1
+
+        local label=$(basename "$plist" .plist)
+        local name="${label#${LABEL_PREFIX}.}"
+
+        # Extract schedule info from plist
+        local schedule=""
+        if grep -q "<key>Weekday</key>" "$plist"; then
+            local weekday=$(grep -A1 "<key>Weekday</key>" "$plist" | grep -o "[0-9]*")
+            local hour=$(grep -A1 "<key>Hour</key>" "$plist" | grep -o "[0-9]*")
+            local minute=$(grep -A1 "<key>Minute</key>" "$plist" | grep -o "[0-9]*")
+            local days=("sun" "mon" "tue" "wed" "thu" "fri" "sat")
+            schedule="weekly@${days[$weekday]}@$(printf '%02d:%02d' "$hour" "$minute")"
+        elif grep -q "<key>Hour</key>" "$plist"; then
+            local hour=$(grep -A1 "<key>Hour</key>" "$plist" | grep -o "[0-9]*")
+            local minute=$(grep -A1 "<key>Minute</key>" "$plist" | grep -o "[0-9]*")
+            schedule="daily@$(printf '%02d:%02d' "$hour" "$minute")"
+        else
+            schedule="hourly"
+        fi
+
+        # Check if loaded
+        local status="loaded"
+        if ! launchctl list "$label" &>/dev/null; then
+            status="unloaded"
+        fi
+
+        # Extract prompt (third string in ProgramArguments array)
+        local prompt=$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments:2" "$plist" 2>/dev/null)
+
+        printf "  %-20s %-25s [%s]\n" "$name" "$schedule" "$status"
+        printf "    %s\n" "$prompt"
+        echo ""
+    done
+
+    if [[ $found -eq 0 ]]; then
+        echo "  No scheduled tasks found"
+        echo ""
+        echo "Add one with: pos-cron add <name> <schedule> <prompt>"
+    fi
+}
+
+cmd_rm() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        echo "Error: Missing task name"
+        echo "Usage: pos-cron rm <name>"
+        exit 1
+    fi
+
+    local label="${LABEL_PREFIX}.${name}"
+    local plist_path="${PLIST_DIR}/${label}.plist"
+
+    if [[ ! -f "$plist_path" ]]; then
+        echo "Error: Task '$name' not found"
+        exit 1
+    fi
+
+    # Unload first
+    launchctl unload "$plist_path" 2>/dev/null
+
+    # Remove plist
+    rm "$plist_path"
+
+    echo "Removed scheduled task: $name"
+}
+
+cmd_logs() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        echo "Error: Missing task name"
+        echo "Usage: pos-cron logs <name>"
+        exit 1
+    fi
+
+    local log_path="${LOG_DIR}/${name}.log"
+
+    if [[ ! -f "$log_path" ]]; then
+        echo "No logs found for task: $name"
+        echo "Log path: $log_path"
+        exit 1
+    fi
+
+    tail -f "$log_path"
+}
+
+cmd_run() {
+    local name="$1"
+
+    if [[ -z "$name" ]]; then
+        echo "Error: Missing task name"
+        echo "Usage: pos-cron run <name>"
+        exit 1
+    fi
+
+    local label="${LABEL_PREFIX}.${name}"
+    local plist_path="${PLIST_DIR}/${label}.plist"
+
+    if [[ ! -f "$plist_path" ]]; then
+        echo "Error: Task '$name' not found"
+        exit 1
+    fi
+
+    # Ensure it's loaded
+    if ! launchctl list "$label" &>/dev/null; then
+        launchctl load "$plist_path"
+    fi
+
+    echo "Triggering task: $name"
+    launchctl start "$label"
+    echo "Task started. View logs with: pos-cron logs $name"
+}
+
+# Main command dispatch
+case "${1:-}" in
+    add)
+        shift
+        cmd_add "$@"
+        ;;
+    list)
+        cmd_list
+        ;;
+    rm|remove)
+        shift
+        cmd_rm "$@"
+        ;;
+    logs)
+        shift
+        cmd_logs "$@"
+        ;;
+    run)
+        shift
+        cmd_run "$@"
+        ;;
+    *)
+        usage
+        ;;
+esac
