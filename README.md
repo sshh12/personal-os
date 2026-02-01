@@ -4,22 +4,9 @@ A single-file personal AI assistant powered by Claude Code. No installation, no 
 
 **Think [OpenClaw](https://openclaw.ai) but simpler.** If OpenClaw is the full-featured Linux distro, pos is the single USB boot drive that just works.
 
-## Philosophy
+The script itself is just a model + prompt + your context. There's no base code for integrations, skills, or interfaces—everything gets generated on demand, hyper-personalized to your exact situation. When you need a WhatsApp interface, Claude builds it. When you need a calendar skill, Claude writes it. Every piece of code is bespoke, disposable, and yours.
 
-Most personal AI projects ship dozens of pre-built integrations. We think that's backwards.
-
-**Code is just a cache of intent.** The "source code" isn't the Python or JavaScript—it's the prompt and context. The actual code that executes is disposable. If behavior needs to change, you don't refactor; you regenerate.
-
-This means the ultimate personal OS has almost no code. It's just:
-- A model
-- A prompt
-- Your context
-
-Everything else—integrations, skills, interfaces—gets generated on demand, hyper-personalized to your exact situation. Why use a generic "Gmail integration" when Claude can write exactly what *you* need in 30 seconds?
-
-pos embraces this. The script is ~10KB. The system prompt teaches Claude *how* to be your OS, not *what* to do. When you need a WhatsApp interface, Claude builds it. When you need a calendar skill, Claude writes it. Every piece of code is bespoke, disposable, and yours.
-
-*See [Most Code is Just Cache](https://shrivu.substack.com/p/most-code-is-just-cache) for more on this philosophy.*
+*See [Most Code is Just Cache](https://shrivu.substack.com/p/most-code-is-just-cache) for more on this idea.*
 
 ## What It Does
 
