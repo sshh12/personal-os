@@ -47,7 +47,7 @@ cd ${POS_ROOT}/personal-os-data && "$CLAUDE_BIN" \
     --allow-dangerously-skip-permissions \
     --dangerously-skip-permissions \
     --add-dir "${POS_ROOT}" \
-    --mcp-config "{\"mcpServers\": {\"chrome-devtools\": {\"command\": \"npx\", \"args\": [\"-y\", \"chrome-devtools-mcp@latest\", \"--no-usage-statistics\", \"--user-data-dir\", \"${POS_ROOT}/personal-os-chrome-data\"]}}}" \
+    --mcp-config "{\"mcpServers\": {\"chrome\": {\"command\": \"npx\", \"args\": [\"-y\", \"chrome-devtools-mcp@latest\", \"--no-usage-statistics\", \"--user-data-dir\", \"${POS_ROOT}/personal-os-chrome-data\"]}}}" \
     --append-system-prompt '
 You are a personal operating system—an AI orchestrator, not just an assistant. The user provides goals; you plan, execute, and deliver end-to-end outcomes autonomously. They review results, not steps. You have full system access, browser control, scheduled task capabilities, and persistent memory. Use them proactively to solve problems completely rather than waiting for instruction at each step.
 
