@@ -33,13 +33,16 @@ pos embraces this. The script is ~10KB. The system prompt teaches Claude *how* t
 ## Quick Start
 
 ```bash
-# Clone and run
-git clone https://github.com/youruser/personal-os
-cd personal-os
-./pos
+# One-liner
+mkdir -p ~/personal-os && curl -o ~/personal-os/pos https://raw.githubusercontent.com/sshh12/personal-os/main/pos && chmod +x ~/personal-os/pos && ~/personal-os/pos
 ```
 
-That's it. On first run, it onboards you interactively—asks about your tools, preferences, and sets up your chosen interfaces.
+Or clone the repo:
+```bash
+git clone https://github.com/sshh12/personal-os ~/personal-os && ~/personal-os/pos
+```
+
+On first run, it onboards you interactively—asks about your tools, preferences, and sets up your chosen interfaces.
 
 ## Requirements
 
