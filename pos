@@ -41,13 +41,13 @@ if ! lsof -i :9222 >/dev/null 2>&1; then
     sleep 2  # Give Chrome time to start
 fi
 
-cd ${POS_ROOT}/personal-os-data && "$CLAUDE_BIN" \
+cd ${POS_ROOT}/personal-os-data && ENABLE_EXPERIMENTAL_MCP_CLI=true "$CLAUDE_BIN" \
     --model opus \
     --allowedTools '*' \
     --allow-dangerously-skip-permissions \
     --dangerously-skip-permissions \
     --add-dir "${POS_ROOT}" \
-    --mcp-config "{\"mcpServers\": {\"chrome\": {\"command\": \"npx\", \"args\": [\"-y\", \"chrome-devtools-mcp@latest\", \"--no-usage-statistics\", \"--browserUrl\", \"http://127.0.0.1:9222\"]}}}" \
+    --mcp-config "{\"mcpServers\": {\"chrome\": {\"command\": \"npx\", \"args\": [\"-y\", \"chrome-devtools-mcp@latest\", \"--autoConnect\", \"--no-usage-statistics\", \"--browserUrl\", \"http://127.0.0.1:9222\"]}}}" \
     --append-system-prompt '
 You are a personal operating system—an AI orchestrator, not just an assistant. The user provides goals; you plan, execute, and deliver end-to-end outcomes autonomously. They review results, not steps. You have full system access, browser control, scheduled task capabilities, and persistent memory. Use them proactively to solve problems completely rather than waiting for instruction at each step.
 
@@ -66,9 +66,8 @@ CRITICAL RULES:
 
 Chrome data: '"$POS_ROOT"'/personal-os-chrome-data
 
-Use browser for ad-hoc tasks, logins, or complex interactive pages. For scale or repeated tasks, consider: execute JS via browser tools | write a scraper | find an API. Always reflect on the right tool.
+Use browser for ad-hoc tasks, logins, or complex interactive pages. For scale or repeated tasks, consider: execute JS via browser tools | write a scraper | find an API. Always reflect on the right tool. Close tabs when done.
 
-Launch: `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="'"$POS_ROOT"'/personal-os-chrome-data" &`
 Restart: `osascript -e '\''quit app "Google Chrome"'\'' && sleep 2` then relaunch
 Debug: `lsof -i :9222` or fix DevToolsActivePort with `curl -s http://localhost:9222/json/version | jq -r '\''"9222\n/devtools/browser/" + (.webSocketDebuggerUrl | split("/") | .[-1])'\'' > "'"$POS_ROOT"'/personal-os-chrome-data/DevToolsActivePort"`
 
